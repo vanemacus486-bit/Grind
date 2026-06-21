@@ -8,8 +8,10 @@ import {
   NumberInput,
   Select,
   Switch,
+  Loader,
   Code
 } from '@mantine/core'
+import { IconDownload, IconUpload } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { getSettings, saveSettings, db } from '../db/dexie'
 import type { AppSettings, VerifyDirection, RecombineMode } from '../db/types'
@@ -89,13 +91,13 @@ export default function SettingsView() {
   if (!s) {
     return (
       <Stack align="center" py={80}>
-        <Text c="dimmed">⏳ 加载中...</Text>
+        <Loader color="indigo" type="dots" />
       </Stack>
     )
   }
 
   return (
-    <Stack gap="md">
+    <Stack gap="md" maw={640} mx="auto" w="100%">
       <Paper withBorder p="md">
         <Text size="sm" fw={500} tt="uppercase" c="dimmed" mb="md">
           背诵设置
@@ -198,11 +200,19 @@ export default function SettingsView() {
           数据
         </Text>
         <Group>
-          <Button variant="light" onClick={handleExport}>
-            📤 导出备份
+          <Button
+            variant="light"
+            leftSection={<IconDownload size={16} stroke={1.7} />}
+            onClick={handleExport}
+          >
+            导出备份
           </Button>
-          <Button variant="light" onClick={handleImportBackup}>
-            📥 导入备份
+          <Button
+            variant="light"
+            leftSection={<IconUpload size={16} stroke={1.7} />}
+            onClick={handleImportBackup}
+          >
+            导入备份
           </Button>
         </Group>
         <Text size="xs" c="dimmed" mt="sm">

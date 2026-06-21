@@ -133,11 +133,7 @@ body {
   box-shadow: var(--mantine-shadow-lg);
 }
 
-/* 顶部品牌栏：滚动时保持可见 */
-.grind-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  backdrop-filter: saturate(140%) blur(8px);
-  background: color-mix(in srgb, var(--mantine-color-body) 78%, transparent);
+/* —— 勾选指示点内的图标随父级 currentColor 显隐 —— */
+.grind-check svg {
+  display: block;
 }

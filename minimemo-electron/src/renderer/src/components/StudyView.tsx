@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Stack,
+  SimpleGrid,
   Text,
   Group,
   Button,
@@ -13,6 +14,17 @@ import {
   Loader,
   ActionIcon
 } from '@mantine/core'
+import {
+  IconBooks,
+  IconFolder,
+  IconRefresh,
+  IconVolume,
+  IconArrowLeft,
+  IconArrowRight,
+  IconChecklist,
+  IconConfetti,
+  IconCheck
+} from '@tabler/icons-react'
 import {
   db,
   getActiveWords,
@@ -211,9 +223,12 @@ export default function StudyView() {
               gradient={
                 active ? { from: 'indigo', to: 'violet', deg: 135 } : undefined
               }
+              leftSection={
+                d.level ? <IconBooks size={14} stroke={1.7} /> : <IconFolder size={14} stroke={1.7} />
+              }
               onClick={() => handleDeckChange(d.id)}
             >
-              {d.level ? `📚 ${d.name}` : `📂 ${d.name}`}
+              {d.name}
             </Button>
           )
         })}
@@ -225,7 +240,7 @@ export default function StudyView() {
     return (
       <Stack align="center" py={60} gap="md">
         {renderDeckSelector()}
-        <Text style={{ fontSize: 44 }}>🎉</Text>
+        <IconConfetti size={48} stroke={1.5} color="var(--mantine-color-indigo-5)" />
         <Text c="dimmed" ta="center">
           {selectedDeckId !== undefined
             ? '选中的词库没有待背的词了。'
@@ -239,8 +254,13 @@ export default function StudyView() {
           >
             导入单词
           </Button>
-          <Button variant="subtle" color="gray" onClick={reassemble}>
-            🔄 重组
+          <Button
+            variant="subtle"
+            color="gray"
+            leftSection={<IconRefresh size={16} stroke={1.7} />}
+            onClick={reassemble}
+          >
+            重组
           </Button>
         </Group>
       </Stack>
@@ -274,7 +294,7 @@ export default function StudyView() {
       </Stack>
 
       {/* Word cards */}
-      <Stack gap={8}>
+      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={8} verticalSpacing={8}>
         {currentTable.map((word) => {
           const exiting = exitingIds.has(word.id)
           return (
@@ -302,7 +322,7 @@ export default function StudyView() {
                   <Group justify="space-between" wrap="nowrap" gap="sm">
                     <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
                       <span className="grind-check" data-done={exiting}>
-                        ✓
+                        <IconCheck size={14} stroke={3} />
                       </span>
                       <Text fw={600} truncate>
                         {word.text}
@@ -330,7 +350,7 @@ export default function StudyView() {
                             speak(word.text)
                           }}
                         >
-                          🔊
+                          <IconVolume size={18} stroke={1.7} />
                         </ActionIcon>
                       )}
                     </Group>
@@ -340,7 +360,7 @@ export default function StudyView() {
             </Transition>
           )
         })}
-      </Stack>
+      </SimpleGrid>
 
       {/* Navigation */}
       <Group justify="center" gap="xs">
@@ -348,22 +368,29 @@ export default function StudyView() {
           <Button
             variant="subtle"
             color="gray"
+            leftSection={<IconArrowLeft size={16} stroke={1.7} />}
             onClick={() => setTableIndex((i) => i - 1)}
           >
-            ← 上一表
+            上一表
           </Button>
         )}
         {tableIndex < tables.length - 1 && (
           <Button
             variant="subtle"
             color="gray"
+            rightSection={<IconArrowRight size={16} stroke={1.7} />}
             onClick={() => setTableIndex((i) => i + 1)}
           >
-            下一表 →
+            下一表
           </Button>
         )}
-        <Button variant="subtle" color="gray" onClick={reassemble}>
-          🔄 重组剩余
+        <Button
+          variant="subtle"
+          color="gray"
+          leftSection={<IconRefresh size={16} stroke={1.7} />}
+          onClick={reassemble}
+        >
+          重组剩余
         </Button>
       </Group>
 
@@ -377,9 +404,10 @@ export default function StudyView() {
             variant="light"
             color="indigo"
             radius="xl"
+            leftSection={<IconChecklist size={18} stroke={1.7} />}
             onClick={() => nav('/review')}
           >
-            📝 检验模式
+            检验模式
           </Button>
         </Group>
       </Box>

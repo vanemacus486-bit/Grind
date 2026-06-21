@@ -7,8 +7,19 @@ import {
   Group,
   Tooltip,
   Center,
+  Loader,
   type MantineColor
 } from '@mantine/core'
+import {
+  IconFlame,
+  IconCalendarStats,
+  IconPencil,
+  IconStar,
+  IconTrophy,
+  IconBooks,
+  type IconProps
+} from '@tabler/icons-react'
+import type { ComponentType } from 'react'
 import { db } from '../db/dexie'
 import type { Word, AppEvent } from '../db/types'
 
@@ -88,12 +99,12 @@ function bestHour(hours: number[]): string {
 }
 
 function StatTile({
-  emoji,
+  icon: Icon,
   value,
   label,
   color
 }: {
-  emoji: string
+  icon: ComponentType<IconProps>
   value: number
   label: string
   color: MantineColor
@@ -108,7 +119,12 @@ function StatTile({
         borderColor: `var(--mantine-color-${color}-2)`
       }}
     >
-      <Text style={{ fontSize: 22, lineHeight: 1 }}>{emoji}</Text>
+      <Icon
+        size={24}
+        stroke={1.7}
+        color={`var(--mantine-color-${color}-6)`}
+        style={{ display: 'block', margin: '0 auto' }}
+      />
       <Text fw={800} fz={28} c={`${color}.7`} mt={6} style={{ lineHeight: 1.1 }}>
         {value}
       </Text>
@@ -135,7 +151,7 @@ export default function StatsView() {
   if (!stats) {
     return (
       <Center py={80}>
-        <Text c="dimmed">⏳ 加载中...</Text>
+        <Loader color="indigo" type="dots" />
       </Center>
     )
   }
@@ -145,27 +161,27 @@ export default function StatsView() {
   const maxHourCount = Math.max(...stats.hourHistogram, 1)
 
   const tiles: {
-    emoji: string
+    icon: ComponentType<IconProps>
     value: number
     label: string
     color: MantineColor
   }[] = [
-    { emoji: '🔥', value: stats.currentStreak, label: '连续天数', color: 'orange' },
-    { emoji: '📅', value: stats.daysActive, label: '累计活跃', color: 'indigo' },
+    { icon: IconFlame, value: stats.currentStreak, label: '连续天数', color: 'orange' },
+    { icon: IconCalendarStats, value: stats.daysActive, label: '累计活跃', color: 'indigo' },
     {
-      emoji: '✏️',
+      icon: IconPencil,
       value: stats.totalStruck + stats.totalMastered,
       label: '累计划掉',
       color: 'grape'
     },
-    { emoji: '⭐', value: stats.todayMastered, label: '今日掌握', color: 'yellow' },
-    { emoji: '🏆', value: stats.totalMastered, label: '累计掌握', color: 'teal' },
-    { emoji: '📚', value: total, label: '总词条', color: 'blue' }
+    { icon: IconStar, value: stats.todayMastered, label: '今日掌握', color: 'yellow' },
+    { icon: IconTrophy, value: stats.totalMastered, label: '累计掌握', color: 'teal' },
+    { icon: IconBooks, value: total, label: '总词条', color: 'blue' }
   ]
 
   return (
     <Stack gap="md">
-      <SimpleGrid cols={{ base: 2, xs: 3 }} spacing="sm">
+      <SimpleGrid cols={{ base: 2, xs: 3, md: 6 }} spacing="sm">
         {tiles.map((t) => (
           <StatTile key={t.label} {...t} />
         ))}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
   Stack,
+  SimpleGrid,
   Group,
   Text,
   Button,
@@ -14,6 +15,14 @@ import {
   Loader,
   Box
 } from '@mantine/core'
+import {
+  IconBooks,
+  IconFolder,
+  IconPencil,
+  IconTrash,
+  IconSearch,
+  IconVolume
+} from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import {
   db,
@@ -171,9 +180,12 @@ export default function BrowseView() {
               gradient={
                 active ? { from: 'indigo', to: 'violet', deg: 135 } : undefined
               }
+              leftSection={
+                d.level ? <IconBooks size={14} stroke={1.7} /> : <IconFolder size={14} stroke={1.7} />
+              }
               onClick={() => setSelectedId(d.id)}
             >
-              {d.level ? `📚 ${d.name}` : `📂 ${d.name}`}
+              {d.name}
             </Button>
           )
         })}
@@ -206,15 +218,22 @@ export default function BrowseView() {
                 size="xs"
                 variant="subtle"
                 color="gray"
+                leftSection={<IconPencil size={14} stroke={1.7} />}
                 onClick={() => {
                   setRenameVal(selectedDeck.name)
                   setRenaming(true)
                 }}
               >
-                ✏️ 重命名
+                重命名
               </Button>
-              <Button size="xs" variant="light" color="red" onClick={doDelete}>
-                🗑 删除词库
+              <Button
+                size="xs"
+                variant="light"
+                color="red"
+                leftSection={<IconTrash size={14} stroke={1.7} />}
+                onClick={doDelete}
+              >
+                删除词库
               </Button>
             </>
           )}
@@ -225,7 +244,8 @@ export default function BrowseView() {
       <TextInput
         value={q}
         onChange={(e) => setQ(e.currentTarget.value)}
-        placeholder="🔍 搜索单词或释义"
+        placeholder="搜索单词或释义"
+        leftSection={<IconSearch size={16} stroke={1.7} />}
         size="sm"
       />
 
@@ -284,7 +304,8 @@ export default function BrowseView() {
         </Center>
       ) : (
         <Stack gap={4}>
-          {shown.map((w) => (
+          <SimpleGrid cols={{ base: 1, md: 2 }} spacing={4} verticalSpacing={4}>
+            {shown.map((w) => (
             <Paper key={w.id} withBorder p="xs" radius="md">
               <Group justify="space-between" wrap="nowrap" gap="sm">
                 <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
@@ -317,13 +338,14 @@ export default function BrowseView() {
                       aria-label="朗读"
                       onClick={() => speak(w.text)}
                     >
-                      🔊
+                      <IconVolume size={18} stroke={1.7} />
                     </ActionIcon>
                   )}
                 </Group>
               </Group>
             </Paper>
-          ))}
+            ))}
+          </SimpleGrid>
           {filtered.length > VISIBLE_LIMIT && (
             <Box ta="center" py="sm">
               <Text size="xs" c="dimmed">

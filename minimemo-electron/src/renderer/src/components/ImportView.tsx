@@ -11,6 +11,7 @@ import {
   Badge,
   Code
 } from '@mantine/core'
+import { IconFolderOpen } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
 import { createDeckWithWords, logEvent } from '../db/dexie'
 import { parseImportText, guessDeckName } from '../utils/import'
@@ -52,7 +53,7 @@ export default function ImportView() {
   }
 
   return (
-    <Stack gap="md" style={{ flex: 1 }}>
+    <Stack gap="md" maw={720} mx="auto" w="100%">
       <Paper withBorder p="sm">
         <Group>
           <TextInput
@@ -61,8 +62,12 @@ export default function ImportView() {
             onChange={(e) => setName(e.target.value)}
             style={{ flex: 1 }}
           />
-          <Button variant="light" onClick={() => fileRef.current?.click()}>
-            📂 文件
+          <Button
+            variant="light"
+            leftSection={<IconFolderOpen size={16} stroke={1.7} />}
+            onClick={() => fileRef.current?.click()}
+          >
+            文件
           </Button>
           <input
             ref={fileRef}

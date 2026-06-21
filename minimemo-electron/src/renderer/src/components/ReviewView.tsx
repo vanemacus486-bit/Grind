@@ -9,8 +9,17 @@ import {
   Transition,
   Badge,
   Center,
+  Loader,
   ActionIcon
 } from '@mantine/core'
+import {
+  IconVolume,
+  IconBook,
+  IconCheck,
+  IconX,
+  IconCircleCheck,
+  IconArrowLeft
+} from '@tabler/icons-react'
 import { db, getStruckWords, getSettings, logEvent } from '../db/dexie'
 import type { Word } from '../db/types'
 import { speak, isSpeechSupported } from '../utils/speak'
@@ -66,7 +75,7 @@ export default function ReviewView() {
   if (loading) {
     return (
       <Center py={80}>
-        <Text c="dimmed">⏳ 加载中...</Text>
+        <Loader color="indigo" type="dots" />
       </Center>
     )
   }
@@ -74,7 +83,7 @@ export default function ReviewView() {
   if (done || words.length === 0) {
     return (
       <Stack align="center" py={80} gap="md">
-        <Text style={{ fontSize: 48 }}>✅</Text>
+        <IconCircleCheck size={56} stroke={1.5} color="var(--mantine-color-teal-6)" />
         <Text c="dimmed" ta="center">
           检验完毕！已掌握的已存档，没通过的回去了。
         </Text>
@@ -97,8 +106,8 @@ export default function ReviewView() {
 
   const cardBase = {
     width: '100%',
-    maxWidth: 380,
-    minHeight: 220,
+    maxWidth: 460,
+    minHeight: 260,
     display: 'flex',
     flexDirection: 'column' as const,
     alignItems: 'center',
@@ -150,7 +159,7 @@ export default function ReviewView() {
                     speak(current.text)
                   }}
                 >
-                  🔊
+                  <IconVolume size={20} stroke={1.7} />
                 </ActionIcon>
               )}
               <Text size="xs" c="dimmed" mt="xl">
@@ -181,7 +190,7 @@ export default function ReviewView() {
                     speak(current.text)
                   }}
                 >
-                  🔊
+                  <IconVolume size={20} stroke={1.7} />
                 </ActionIcon>
               )}
               {current.reading && (
@@ -200,10 +209,15 @@ export default function ReviewView() {
                     style={{
                       cursor: 'pointer',
                       fontSize: '0.8rem',
-                      color: 'var(--mantine-color-dimmed)'
+                      color: 'var(--mantine-color-dimmed)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 4,
+                      justifyContent: 'center'
                     }}
                   >
-                    📖 英文释义
+                    <IconBook size={14} stroke={1.7} />
+                    英文释义
                   </summary>
                   <Text
                     size="sm"
@@ -225,23 +239,25 @@ export default function ReviewView() {
                   variant="light"
                   color="red"
                   radius="xl"
+                  leftSection={<IconX size={18} stroke={2} />}
                   onClick={(e) => {
                     e.stopPropagation()
                     finish(false)
                   }}
                 >
-                  ✗ 不认识
+                  不认识
                 </Button>
                 <Button
                   variant="filled"
                   color="teal"
                   radius="xl"
+                  leftSection={<IconCheck size={18} stroke={2} />}
                   onClick={(e) => {
                     e.stopPropagation()
                     finish(true)
                   }}
                 >
-                  ✓ 认识
+                  认识
                 </Button>
               </Group>
             </Paper>
@@ -249,8 +265,13 @@ export default function ReviewView() {
         }
       </Transition>
 
-      <Button variant="subtle" color="gray" onClick={() => nav('/')}>
-        ← 退出检验
+      <Button
+        variant="subtle"
+        color="gray"
+        leftSection={<IconArrowLeft size={16} stroke={1.7} />}
+        onClick={() => nav('/')}
+      >
+        退出检验
       </Button>
     </Stack>
   )
