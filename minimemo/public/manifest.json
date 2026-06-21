@@ -1,0 +1,16 @@
+{
+  "name": "极简背词",
+  "short_name": "背词",
+  "description": "把背单词变成划待办一样轻的小工具",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#faf9f6",
+  "theme_color": "#faf9f6",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

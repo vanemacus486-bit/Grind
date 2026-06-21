@@ -1,0 +1,143 @@
+/* Grind — 全局视觉基底（在 Mantine 样式之后加载，用于覆写与点缀） */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(900px 460px at 50% -8%, rgba(99, 102, 241, 0.12), transparent 62%),
+    radial-gradient(700px 380px at 110% 0%, rgba(139, 92, 246, 0.08), transparent 60%),
+    var(--mantine-color-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+[data-mantine-color-scheme='dark'] body {
+  background:
+    radial-gradient(900px 460px at 50% -8%, rgba(99, 102, 241, 0.22), transparent 62%),
+    radial-gradient(700px 380px at 110% 0%, rgba(139, 92, 246, 0.16), transparent 60%),
+    var(--mantine-color-body);
+}
+
+/* —— 自定义滚动条 —— */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--mantine-color-default-border);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--mantine-color-gray-5);
+  background-clip: padding-box;
+}
+
+::selection {
+  background: var(--mantine-color-indigo-2);
+  color: var(--mantine-color-indigo-9);
+}
+
+[data-mantine-color-scheme='dark'] ::selection {
+  background: var(--mantine-color-indigo-7);
+  color: var(--mantine-color-white);
+}
+
+/* —— 可点击卡片（起点选择 / 列表项）的悬浮抬升 —— */
+.grind-card-interactive {
+  cursor: pointer;
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease;
+}
+
+.grind-card-interactive:hover {
+  transform: translateY(-2px);
+  border-color: var(--mantine-color-indigo-4);
+  box-shadow: var(--mantine-shadow-md);
+}
+
+.grind-card-interactive:active {
+  transform: translateY(0);
+}
+
+/* —— 背词卡片：点一下=划掉（已认识） —— */
+.grind-word-card {
+  cursor: pointer;
+  transition:
+    transform 130ms ease,
+    box-shadow 130ms ease,
+    border-color 130ms ease,
+    background-color 130ms ease;
+}
+
+.grind-word-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--mantine-color-indigo-4);
+  box-shadow: var(--mantine-shadow-sm);
+}
+
+/* 左侧勾选指示点：默认空心，悬浮时点亮 */
+.grind-check {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  border-radius: 999px;
+  border: 2px solid var(--mantine-color-gray-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: transparent;
+  transition:
+    background-color 130ms ease,
+    border-color 130ms ease,
+    color 130ms ease;
+}
+
+.grind-word-card:hover .grind-check {
+  border-color: var(--mantine-color-indigo-5);
+  color: var(--mantine-color-indigo-5);
+}
+
+.grind-check[data-done='true'] {
+  background: var(--mantine-color-teal-6);
+  border-color: var(--mantine-color-teal-6);
+  color: #fff;
+}
+
+/* —— 翻转卡片轻微进场 —— */
+.grind-flashcard {
+  transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.grind-flashcard:hover {
+  box-shadow: var(--mantine-shadow-lg);
+}
+
+/* 顶部品牌栏：滚动时保持可见 */
+.grind-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: saturate(140%) blur(8px);
+  background: color-mix(in srgb, var(--mantine-color-body) 78%, transparent);
+}

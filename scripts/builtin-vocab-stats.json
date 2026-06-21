@@ -1,0 +1,20 @@
+{
+  "total": 8358,
+  "byLevel": {
+    "gk": 3582,
+    "cet4": 1638,
+    "cet6": 1747,
+    "ielts": 1391
+  },
+  "includedTags": [
+    "gk",
+    "cet4",
+    "cet6",
+    "ielts"
+  ],
+  "extraTags": [],
+  "generatedAt": "2026-06-21T12:13:03.302Z",
+  "fileSizeEstimate": 3140710,
+  "cleaned": true,
+  "removed": 138
+}
