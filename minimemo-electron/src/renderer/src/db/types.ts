@@ -33,6 +33,10 @@ export interface Word {
   createdAt: Date
   struckAt?: Date
   masteredAt?: Date
+  /** 检测区累计答对次数 */
+  correctCount?: number
+  /** 检测区累计答错次数 */
+  wrongCount?: number
   deckId: number
 }
 

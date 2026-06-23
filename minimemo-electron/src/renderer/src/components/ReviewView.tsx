@@ -6,70 +6,96 @@ import {
   Button,
   Group,
   Paper,
-  Transition,
   Badge,
   Center,
   Loader,
   ActionIcon
 } from '@mantine/core'
-import {
-  IconVolume,
-  IconBook,
-  IconCheck,
-  IconX,
-  IconCircleCheck,
-  IconArrowLeft
-} from '@tabler/icons-react'
-import { db, getStruckWords, getSettings, logEvent } from '../db/dexie'
+import { IconVolume, IconCircleCheck, IconArrowLeft } from '@tabler/icons-react'
+import { db, getStruckWords, logEvent } from '../db/dexie'
 import type { Word } from '../db/types'
 import { speak, isSpeechSupported } from '../utils/speak'
+import { primaryMeaning } from '../utils/meaning'
+
+type Choice = { text: string; correct: boolean }
+
+function shuffle<T>(arr: T[]): T[] {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
 
 export default function ReviewView() {
   const nav = useNavigate()
   const [words, setWords] = useState<Word[]>([])
+  const [pool, setPool] = useState<string[]>([]) // 干扰项来源：所有词的主要释义（去重）
   const [index, setIndex] = useState(0)
-  const [flipped, setFlipped] = useState(false)
+  const [choices, setChoices] = useState<Choice[]>([])
+  const [picked, setPicked] = useState<string | null>(null)
   const [done, setDone] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [dir, setDir] = useState<'word-to-meaning' | 'meaning-to-word'>(
-    'word-to-meaning'
-  )
 
+  const current = words[index]
+  const speakable = isSpeechSupported()
+
+  // 载入待检测的词（背诵区划掉 = struck）+ 干扰项池
   useEffect(() => {
     ;(async () => {
-      const s = await getSettings()
-      setDir(s.verifyDirection)
       const struck = await getStruckWords()
       setWords(struck)
+      const all = await db.words.toArray()
+      const meanings = Array.from(
+        new Set(all.map((w) => primaryMeaning(w.meaning)).filter(Boolean))
+      )
+      setPool(meanings)
       setLoading(false)
     })()
   }, [])
 
-  const current = words[index]
-
-  const finish = async (pass: boolean) => {
+  // 当前词变化时，生成 4 个选项（1 正确 + 3 干扰，打乱）
+  useEffect(() => {
     if (!current) return
-    if (pass) {
+    const correct = primaryMeaning(current.meaning)
+    const distractors = shuffle(pool.filter((m) => m !== correct)).slice(0, 3)
+    const opts: Choice[] = [
+      { text: correct, correct: true },
+      ...distractors.map((d) => ({ text: d, correct: false }))
+    ]
+    setChoices(shuffle(opts))
+    setPicked(null)
+  }, [current, pool])
+
+  const answer = async (choice: Choice): Promise<void> => {
+    if (!current || picked) return
+    setPicked(choice.text)
+    if (choice.correct) {
       await db.words.update(current.id, {
         status: 'mastered',
-        masteredAt: new Date()
+        masteredAt: new Date(),
+        correctCount: (current.correctCount ?? 0) + 1
       })
       await logEvent('verify_pass')
     } else {
       await db.words.update(current.id, {
         status: 'active',
-        struckAt: undefined
+        struckAt: undefined,
+        wrongCount: (current.wrongCount ?? 0) + 1
       })
       await logEvent('verify_fail')
     }
-
-    const remaining = words.filter((w) => w.id !== current.id)
-    if (remaining.length === 0) {
-      setDone(true)
-    } else {
-      setWords(remaining)
-      setFlipped(false)
-    }
+    // 短暂展示对错后进入下一题
+    setTimeout(() => {
+      const remaining = words.filter((w) => w.id !== current.id)
+      if (remaining.length === 0) {
+        setDone(true)
+      } else {
+        setWords(remaining)
+        setIndex(0)
+      }
+    }, 900)
   }
 
   if (loading) {
@@ -85,7 +111,7 @@ export default function ReviewView() {
       <Stack align="center" py={80} gap="md">
         <IconCircleCheck size={56} stroke={1.5} color="var(--mantine-color-teal-6)" />
         <Text c="dimmed" ta="center">
-          检验完毕！已掌握的已存档，没通过的回去了。
+          检测完毕！答对的已掌握，答错的回去再背。
         </Text>
         <Button
           variant="gradient"
@@ -99,171 +125,80 @@ export default function ReviewView() {
     )
   }
 
-  const showFront = dir === 'word-to-meaning'
-  const frontText = showFront ? current.text : current.meaning ?? '(无释义)'
-  const backText = showFront ? current.meaning ?? '(无释义)' : current.text
-  const speakable = isSpeechSupported()
-
-  const cardBase = {
-    width: '100%',
-    maxWidth: 460,
-    minHeight: 260,
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    justifyContent: 'center'
-  }
-
   return (
     <Stack align="center" gap="lg" py="lg">
-      <Badge
-        size="lg"
-        radius="sm"
-        variant="light"
-        color="indigo"
-      >
-        剩余 {words.length} 个 ·{' '}
-        {dir === 'word-to-meaning' ? '看词回忆义' : '看义回忆词'}
+      <Badge size="lg" radius="sm" variant="light" color="indigo">
+        剩余 {words.length} 个 · 选出正确释义
       </Badge>
 
-      <Transition mounted={!flipped} transition="fade" duration={200}>
-        {(styles) =>
-          !flipped ? (
-            <Paper
-              withBorder
-              shadow="md"
-              p="xl"
-              className="grind-flashcard"
-              style={{
-                ...styles,
-                ...cardBase,
-                cursor: 'pointer',
-                background:
-                  'linear-gradient(160deg, var(--mantine-color-indigo-0), var(--mantine-color-body) 70%)'
-              }}
-              onClick={() => setFlipped(true)}
+      <Paper
+        withBorder
+        shadow="md"
+        p="xl"
+        className="grind-flashcard"
+        style={{
+          width: '100%',
+          maxWidth: 460,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          background:
+            'linear-gradient(160deg, var(--mantine-color-indigo-light), var(--mantine-color-body) 70%)'
+        }}
+      >
+        <Group gap="xs">
+          <Text fw={700} style={{ fontSize: 30 }}>
+            {current.text}
+          </Text>
+          {speakable && (
+            <ActionIcon
+              variant="subtle"
+              color="indigo"
+              size="lg"
+              radius="xl"
+              aria-label="朗读"
+              onClick={() => speak(current.text)}
             >
-              <Text size="xl" fw={700} ta="center" style={{ fontSize: 30 }}>
-                {frontText}
-              </Text>
-              {speakable && showFront && (
-                <ActionIcon
-                  variant="light"
-                  color="indigo"
-                  size="lg"
-                  radius="xl"
-                  mt="md"
-                  aria-label="朗读"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    speak(current.text)
-                  }}
-                >
-                  <IconVolume size={20} stroke={1.7} />
-                </ActionIcon>
-              )}
-              <Text size="xs" c="dimmed" mt="xl">
-                点击翻转
-              </Text>
-            </Paper>
-          ) : (
-            <Paper
-              withBorder
-              shadow="md"
-              p="xl"
-              className="grind-flashcard"
-              style={{ ...cardBase }}
+              <IconVolume size={20} stroke={1.7} />
+            </ActionIcon>
+          )}
+        </Group>
+        {current.reading && (
+          <Text size="sm" c="dimmed" mt={4}>
+            {current.reading}
+          </Text>
+        )}
+      </Paper>
+
+      <Stack gap="sm" w="100%" maw={460}>
+        {choices.map((c) => {
+          let color: string | undefined
+          let variant: 'light' | 'filled' | 'default' = 'default'
+          if (picked) {
+            if (c.correct) {
+              color = 'teal'
+              variant = 'filled'
+            } else if (c.text === picked) {
+              color = 'red'
+              variant = 'light'
+            }
+          }
+          return (
+            <Button
+              key={c.text}
+              fullWidth
+              size="md"
+              radius="md"
+              variant={variant}
+              color={color}
+              disabled={!!picked && !c.correct && c.text !== picked}
+              onClick={() => answer(c)}
             >
-              <Text size="xl" fw={700} ta="center" style={{ fontSize: 26 }}>
-                {backText}
-              </Text>
-              {speakable && (
-                <ActionIcon
-                  variant="light"
-                  color="indigo"
-                  size="lg"
-                  radius="xl"
-                  mt="sm"
-                  aria-label="朗读"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    speak(current.text)
-                  }}
-                >
-                  <IconVolume size={20} stroke={1.7} />
-                </ActionIcon>
-              )}
-              {current.reading && (
-                <Text size="sm" c="dimmed" mt="xs">
-                  {current.reading}
-                </Text>
-              )}
-              {current.forms && current.forms.length > 0 && (
-                <Text size="sm" c="dimmed" mt={4} fs="italic" ta="center">
-                  {current.forms.join(' · ')}
-                </Text>
-              )}
-              {current.en && (
-                <details style={{ marginTop: 8, maxWidth: '100%' }}>
-                  <summary
-                    style={{
-                      cursor: 'pointer',
-                      fontSize: '0.8rem',
-                      color: 'var(--mantine-color-dimmed)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      justifyContent: 'center'
-                    }}
-                  >
-                    <IconBook size={14} stroke={1.7} />
-                    英文释义
-                  </summary>
-                  <Text
-                    size="sm"
-                    c="dimmed"
-                    mt={4}
-                    style={{ whiteSpace: 'pre-wrap' }}
-                  >
-                    {current.en}
-                  </Text>
-                </details>
-              )}
-              {current.example && (
-                <Text size="sm" c="dimmed" mt="xs" ta="center">
-                  例：{current.example}
-                </Text>
-              )}
-              <Group mt="xl" gap="sm">
-                <Button
-                  variant="light"
-                  color="red"
-                  radius="xl"
-                  leftSection={<IconX size={18} stroke={2} />}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    finish(false)
-                  }}
-                >
-                  不认识
-                </Button>
-                <Button
-                  variant="filled"
-                  color="teal"
-                  radius="xl"
-                  leftSection={<IconCheck size={18} stroke={2} />}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    finish(true)
-                  }}
-                >
-                  认识
-                </Button>
-              </Group>
-            </Paper>
+              {c.text}
+            </Button>
           )
-        }
-      </Transition>
+        })}
+      </Stack>
 
       <Button
         variant="subtle"
@@ -271,7 +206,7 @@ export default function ReviewView() {
         leftSection={<IconArrowLeft size={16} stroke={1.7} />}
         onClick={() => nav('/')}
       >
-        退出检验
+        退出检测
       </Button>
     </Stack>
   )

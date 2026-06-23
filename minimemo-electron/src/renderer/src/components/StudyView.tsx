@@ -8,6 +8,7 @@ import {
   Button,
   Paper,
   Progress,
+  SegmentedControl,
   Transition,
   Box,
   Center,
@@ -35,6 +36,8 @@ import {
 import type { Word, VocabLevel } from '../db/types'
 import { BUILTIN_DECKS, BUILTIN_LEVELS } from '../db/types'
 import { speak, isSpeechSupported } from '../utils/speak'
+import { notifications } from '@mantine/notifications'
+import { primaryMeaning } from '../utils/meaning'
 
 function chunkWords(words: Word[], batchSize: number): Word[][] {
   const chunks: Word[][] = []
@@ -50,6 +53,7 @@ export default function StudyView() {
   const [tableIndex, setTableIndex] = useState(0)
   const [exitingIds, setExitingIds] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(true)
+  const [mode, setMode] = useState<'study' | 'screen'>('study')
 
   // —— 内置 deck 切换 ——
   const [allDecks, setAllDecks] = useState<
@@ -157,16 +161,50 @@ export default function StudyView() {
     setLoading(true)
   }
 
+  const undoMaster = async (id: number): Promise<void> => {
+    notifications.hide(`undo-${id}`)
+    await db.words.update(id, { status: 'active', masteredAt: undefined })
+    await reassemble()
+  }
+
   const strikeWord = async (word: Word) => {
     if (exitingIds.has(word.id)) return
     setExitingIds((prev) => new Set(prev).add(word.id))
     await logEvent('strike')
 
     setTimeout(async () => {
-      await db.words.update(word.id, {
-        status: 'struck',
-        struckAt: new Date()
-      })
+      if (mode === 'screen') {
+        await db.words.update(word.id, {
+          status: 'mastered',
+          masteredAt: new Date()
+        })
+        notifications.show({
+          id: `undo-${word.id}`,
+          color: 'teal',
+          title: '已标记为掌握',
+          message: (
+            <Group justify="space-between" wrap="nowrap" gap="sm">
+              <Text size="sm" truncate>
+                {word.text}
+              </Text>
+              <Button
+                size="compact-xs"
+                variant="white"
+                color="teal"
+                onClick={() => undoMaster(word.id)}
+              >
+                撤销
+              </Button>
+            </Group>
+          ),
+          autoClose: 4000
+        })
+      } else {
+        await db.words.update(word.id, {
+          status: 'struck',
+          struckAt: new Date()
+        })
+      }
       const allActive = await fetchActives()
       const settings = await getSettings()
       if (settings.recombineMode === 'auto' && allActive.length > 0) {
@@ -190,6 +228,42 @@ export default function StudyView() {
         return next
       })
     }, 300)
+  }
+
+  const undoMasterMany = async (ids: number[]): Promise<void> => {
+    notifications.hide('undo-page')
+    await db.words
+      .where('id')
+      .anyOf(ids)
+      .modify({ status: 'active', masteredAt: undefined })
+    await reassemble()
+  }
+
+  const screenWholeTable = async (): Promise<void> => {
+    const ids = (tables[tableIndex] ?? []).map((w) => w.id)
+    if (ids.length === 0) return
+    await db.words
+      .where('id')
+      .anyOf(ids)
+      .modify({ status: 'mastered', masteredAt: new Date() })
+    await logEvent('strike')
+    await reassemble()
+    notifications.show({
+      id: 'undo-page',
+      color: 'teal',
+      title: `整页已移出 ${ids.length} 个`,
+      message: (
+        <Button
+          size="compact-xs"
+          variant="white"
+          color="teal"
+          onClick={() => undoMasterMany(ids)}
+        >
+          撤销
+        </Button>
+      ),
+      autoClose: 6000
+    })
   }
 
   if (loading) {
@@ -271,6 +345,25 @@ export default function StudyView() {
     <Stack gap="md">
       {renderDeckSelector()}
 
+      {/* 筛选 / 背诵 模式切换 */}
+      <Stack gap={4} align="center">
+        <SegmentedControl
+          size="sm"
+          radius="xl"
+          value={mode}
+          onChange={(v) => setMode(v as 'study' | 'screen')}
+          data={[
+            { value: 'screen', label: '筛选区' },
+            { value: 'study', label: '背诵区' }
+          ]}
+        />
+        <Text size="xs" c="dimmed" ta="center">
+          {mode === 'screen'
+            ? '筛选区：点一下 = 已经会了，移出学习（可撤销）'
+            : '背诵区：点一下 = 记住了，送去检测区'}
+        </Text>
+      </Stack>
+
       {/* Table indicator + progress */}
       <Stack gap={6}>
         <Group justify="space-between" align="flex-end">
@@ -279,7 +372,7 @@ export default function StudyView() {
             · 共 {allWords.length} 词
           </Text>
           <Text size="sm" fw={600} c="indigo">
-            {struckCount}/{tableTotal} 已划
+            {struckCount}/{tableTotal} {mode === 'screen' ? '已掌握' : '已划'}
           </Text>
         </Group>
 
@@ -292,6 +385,18 @@ export default function StudyView() {
           animated={pct > 0 && pct < 100}
         />
       </Stack>
+
+      {mode === 'screen' && currentTable.length > 0 && (
+        <Button
+          variant="light"
+          color="teal"
+          radius="md"
+          leftSection={<IconCheck size={16} stroke={2} />}
+          onClick={screenWholeTable}
+        >
+          这一页我全会，整页移出（{currentTable.length}）
+        </Button>
+      )}
 
       {/* Word cards */}
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={8} verticalSpacing={8}>
@@ -314,17 +419,17 @@ export default function StudyView() {
                     textDecoration: exiting ? 'line-through' : 'none',
                     opacity: exiting ? 0.55 : 1,
                     background: exiting
-                      ? 'var(--mantine-color-teal-0)'
+                      ? 'var(--mantine-color-teal-light)'
                       : undefined
                   }}
                   onClick={() => strikeWord(word)}
                 >
                   <Group justify="space-between" wrap="nowrap" gap="sm">
-                    <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+                    <Group gap="sm" wrap="nowrap" style={{ flexShrink: 0 }}>
                       <span className="grind-check" data-done={exiting}>
                         <IconCheck size={14} stroke={3} />
                       </span>
-                      <Text fw={600} truncate>
+                      <Text fw={600}>
                         {word.text}
                       </Text>
                     </Group>
@@ -335,7 +440,7 @@ export default function StudyView() {
                     >
                       {word.meaning && (
                         <Text size="sm" c="dimmed" ta="right" truncate>
-                          {word.meaning}
+                          {primaryMeaning(word.meaning)}
                         </Text>
                       )}
                       {speakable && (
@@ -407,7 +512,7 @@ export default function StudyView() {
             leftSection={<IconChecklist size={18} stroke={1.7} />}
             onClick={() => nav('/review')}
           >
-            检验模式
+            检测区
           </Button>
         </Group>
       </Box>

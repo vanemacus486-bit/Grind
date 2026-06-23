@@ -101,7 +101,7 @@ body {
   height: 20px;
   flex: 0 0 20px;
   border-radius: 999px;
-  border: 2px solid var(--mantine-color-gray-4);
+  border: 2px solid var(--mantine-color-default-border);
   display: flex;
   align-items: center;
   justify-content: center;

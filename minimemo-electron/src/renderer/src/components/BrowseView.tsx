@@ -39,7 +39,7 @@ type StatusFilter = 'all' | WordStatus
 
 const STATUS_LABEL: Record<WordStatus, string> = {
   active: '待背',
-  struck: '已划',
+  struck: '待检测',
   mastered: '已掌握'
 }
 const STATUS_COLOR: Record<WordStatus, string> = {
@@ -258,7 +258,7 @@ export default function BrowseView() {
           data={[
             { value: 'all', label: '全部' },
             { value: 'active', label: '待背' },
-            { value: 'struck', label: '已划' },
+            { value: 'struck', label: '待检测' },
             { value: 'mastered', label: '已掌握' }
           ]}
         />
@@ -289,7 +289,7 @@ export default function BrowseView() {
 
       {/* 统计 */}
       <Text size="xs" c="dimmed">
-        共 {counts.total} · 待背 {counts.a} · 已划 {counts.s} · 已掌握 {counts.m}
+        共 {counts.total} · 待背 {counts.a} · 待检测 {counts.s} · 已掌握 {counts.m}
         {filtered.length !== counts.total && ` · 筛出 ${filtered.length}`}
       </Text>
 

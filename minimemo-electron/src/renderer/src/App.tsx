@@ -127,15 +127,10 @@ function AppContent() {
   const [ready, setReady] = useState(false)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const navigate = useNavigate()
-
   useEffect(() => {
     ;(async () => {
       try {
-        const s = await initSettings()
-        document.documentElement.setAttribute(
-          'data-mantine-color-scheme',
-          s.theme
-        )
+        await initSettings()
 
         // 检测/灌入内置词库
         const result = await ensureBuiltinVocab()

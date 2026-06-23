@@ -9,7 +9,8 @@ import {
   Select,
   Switch,
   Loader,
-  Code
+  Code,
+  useMantineColorScheme
 } from '@mantine/core'
 import { IconDownload, IconUpload } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
@@ -18,6 +19,7 @@ import type { AppSettings, VerifyDirection, RecombineMode } from '../db/types'
 
 export default function SettingsView() {
   const [s, setS] = useState<AppSettings | null>(null)
+  const { colorScheme, setColorScheme } = useMantineColorScheme()
 
   useEffect(() => {
     getSettings().then(setS)
@@ -31,6 +33,7 @@ export default function SettingsView() {
     const next = { ...s, [key]: value }
     setS(next)
     await saveSettings(next)
+
   }
 
   const handleExport = async () => {
@@ -103,7 +106,7 @@ export default function SettingsView() {
           背诵设置
         </Text>
 
-        <Group justify="space-between" pb="sm" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+        <Group justify="space-between" pb="sm" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
           <div>
             <Text size="sm">每表词数</Text>
             <Text size="xs" c="dimmed">
@@ -120,7 +123,7 @@ export default function SettingsView() {
           />
         </Group>
 
-        <Group justify="space-between" py="sm" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+        <Group justify="space-between" py="sm" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
           <div>
             <Text size="sm">重组模式</Text>
             <Text size="xs" c="dimmed">
@@ -139,7 +142,7 @@ export default function SettingsView() {
           />
         </Group>
 
-        <Group justify="space-between" py="sm" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+        <Group justify="space-between" py="sm" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
           <div>
             <Text size="sm">检验方向</Text>
             <Text size="xs" c="dimmed">
@@ -165,9 +168,9 @@ export default function SettingsView() {
             <Text size="sm">深色模式</Text>
           </div>
           <Switch
-            checked={s.theme === 'dark'}
+            checked={colorScheme === 'dark'}
             onChange={(e) =>
-              update('theme', e.currentTarget.checked ? 'dark' : 'light')
+              setColorScheme(e.currentTarget.checked ? 'dark' : 'light')
             }
           />
         </Group>
