@@ -95,6 +95,17 @@ body {
   box-shadow: var(--mantine-shadow-sm);
 }
 
+/* 键盘可达：卡片获得焦点时给出清晰的指示环 */
+.grind-word-card:focus-visible {
+  outline: none;
+  border-color: var(--mantine-color-indigo-5);
+  box-shadow: 0 0 0 2px var(--mantine-color-indigo-2), var(--mantine-shadow-sm);
+}
+
+[data-mantine-color-scheme='dark'] .grind-word-card:focus-visible {
+  box-shadow: 0 0 0 2px var(--mantine-color-indigo-7), var(--mantine-shadow-sm);
+}
+
 /* 左侧勾选指示点：默认空心，悬浮时点亮 */
 .grind-check {
   width: 20px;

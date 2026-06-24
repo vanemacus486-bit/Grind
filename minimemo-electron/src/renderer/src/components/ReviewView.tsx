@@ -7,15 +7,16 @@ import {
   Group,
   Paper,
   Badge,
-  Center,
-  Loader,
   ActionIcon
 } from '@mantine/core'
+import { useHotkeys } from '@mantine/hooks'
 import { IconVolume, IconCircleCheck, IconArrowLeft } from '@tabler/icons-react'
-import { db, getStruckWords, logEvent } from '../db/dexie'
-import type { Word } from '../db/types'
+import { db, getStruckWords, getSettings, logEvent } from '../db/dexie'
+import type { Word, VerifyDirection } from '../db/types'
 import { speak, isSpeechSupported } from '../utils/speak'
 import { primaryMeaning } from '../utils/meaning'
+import { BRAND_GRADIENT } from '../theme'
+import { LoadingState } from './common/States'
 
 type Choice = { text: string; correct: boolean }
 
@@ -31,7 +32,8 @@ function shuffle<T>(arr: T[]): T[] {
 export default function ReviewView() {
   const nav = useNavigate()
   const [words, setWords] = useState<Word[]>([])
-  const [pool, setPool] = useState<string[]>([]) // 干扰项来源：所有词的主要释义（去重）
+  const [pool, setPool] = useState<string[]>([]) // 干扰项来源（去重）：词→义时为释义，义→词时为单词
+  const [direction, setDirection] = useState<VerifyDirection>('word-to-meaning')
   const [index, setIndex] = useState(0)
   const [choices, setChoices] = useState<Choice[]>([])
   const [picked, setPicked] = useState<string | null>(null)
@@ -39,26 +41,30 @@ export default function ReviewView() {
   const [loading, setLoading] = useState(true)
 
   const current = words[index]
+  const toWord = direction === 'meaning-to-word'
   const speakable = isSpeechSupported()
 
-  // 载入待检测的词（背诵区划掉 = struck）+ 干扰项池
+  // 载入待检测的词（背诵区划掉 = struck）+ 检验方向 + 干扰项池
   useEffect(() => {
     ;(async () => {
+      const settings = await getSettings()
+      setDirection(settings.verifyDirection)
       const struck = await getStruckWords()
       setWords(struck)
       const all = await db.words.toArray()
-      const meanings = Array.from(
-        new Set(all.map((w) => primaryMeaning(w.meaning)).filter(Boolean))
-      )
-      setPool(meanings)
+      const items =
+        settings.verifyDirection === 'meaning-to-word'
+          ? all.map((w) => w.text)
+          : all.map((w) => primaryMeaning(w.meaning))
+      setPool(Array.from(new Set(items.filter(Boolean))))
       setLoading(false)
     })()
   }, [])
 
-  // 当前词变化时，生成 4 个选项（1 正确 + 3 干扰，打乱）
+  // 当前词变化时，生成 4 个选项（1 正确 + 至多 3 干扰，打乱）
   useEffect(() => {
     if (!current) return
-    const correct = primaryMeaning(current.meaning)
+    const correct = toWord ? current.text : primaryMeaning(current.meaning)
     const distractors = shuffle(pool.filter((m) => m !== correct)).slice(0, 3)
     const opts: Choice[] = [
       { text: correct, correct: true },
@@ -66,7 +72,7 @@ export default function ReviewView() {
     ]
     setChoices(shuffle(opts))
     setPicked(null)
-  }, [current, pool])
+  }, [current, pool, toWord])
 
   const answer = async (choice: Choice): Promise<void> => {
     if (!current || picked) return
@@ -98,12 +104,16 @@ export default function ReviewView() {
     }, 900)
   }
 
+  // 键盘快捷键：1/2/3/4 选答案
+  useHotkeys([
+    ['1', () => !picked && choices[0] && answer(choices[0])],
+    ['2', () => !picked && choices[1] && answer(choices[1])],
+    ['3', () => !picked && choices[2] && answer(choices[2])],
+    ['4', () => !picked && choices[3] && answer(choices[3])]
+  ])
+
   if (loading) {
-    return (
-      <Center py={80}>
-        <Loader color="indigo" type="dots" />
-      </Center>
-    )
+    return <LoadingState />
   }
 
   if (done || words.length === 0) {
@@ -111,11 +121,13 @@ export default function ReviewView() {
       <Stack align="center" py={80} gap="md">
         <IconCircleCheck size={56} stroke={1.5} color="var(--mantine-color-teal-6)" />
         <Text c="dimmed" ta="center">
-          检测完毕！答对的已掌握，答错的回去再背。
+          {done
+            ? '检测完毕！答对的已掌握，答错的回去再背。'
+            : '暂无待检测的词。去背诵区划掉记住的词，它们会来这里检测。'}
         </Text>
         <Button
           variant="gradient"
-          gradient={{ from: 'indigo', to: 'violet', deg: 135 }}
+          gradient={BRAND_GRADIENT}
           radius="xl"
           onClick={() => nav('/')}
         >
@@ -125,10 +137,12 @@ export default function ReviewView() {
     )
   }
 
+  const promptText = toWord ? primaryMeaning(current.meaning) : current.text
+
   return (
     <Stack align="center" gap="lg" py="lg">
       <Badge size="lg" radius="sm" variant="light" color="indigo">
-        剩余 {words.length} 个 · 选出正确释义
+        剩余 {words.length} 个 · {toWord ? '选出对应单词' : '选出正确释义'}
       </Badge>
 
       <Paper
@@ -147,10 +161,10 @@ export default function ReviewView() {
         }}
       >
         <Group gap="xs">
-          <Text fw={700} style={{ fontSize: 30 }}>
-            {current.text}
+          <Text fw={700} ta="center" style={{ fontSize: 30 }}>
+            {promptText}
           </Text>
-          {speakable && (
+          {!toWord && speakable && (
             <ActionIcon
               variant="subtle"
               color="indigo"
@@ -163,7 +177,7 @@ export default function ReviewView() {
             </ActionIcon>
           )}
         </Group>
-        {current.reading && (
+        {!toWord && current.reading && (
           <Text size="sm" c="dimmed" mt={4}>
             {current.reading}
           </Text>
@@ -171,7 +185,7 @@ export default function ReviewView() {
       </Paper>
 
       <Stack gap="sm" w="100%" maw={460}>
-        {choices.map((c) => {
+        {choices.map((c, i) => {
           let color: string | undefined
           let variant: 'light' | 'filled' | 'default' = 'default'
           if (picked) {
@@ -191,6 +205,12 @@ export default function ReviewView() {
               radius="md"
               variant={variant}
               color={color}
+              justify="flex-start"
+              leftSection={
+                <Text span c="dimmed" fz="xs" fw={700} w={16}>
+                  {i + 1}
+                </Text>
+              }
               disabled={!!picked && !c.correct && c.text !== picked}
               onClick={() => answer(c)}
             >

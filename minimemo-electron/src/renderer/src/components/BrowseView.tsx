@@ -7,51 +7,25 @@ import {
   Button,
   TextInput,
   Select,
-  Badge,
-  ActionIcon,
-  Paper,
   SegmentedControl,
-  Center,
-  Loader,
   Box
 } from '@mantine/core'
-import {
-  IconBooks,
-  IconFolder,
-  IconPencil,
-  IconTrash,
-  IconSearch,
-  IconVolume
-} from '@tabler/icons-react'
+import { IconPencil, IconTrash, IconSearch } from '@tabler/icons-react'
 import { notifications } from '@mantine/notifications'
-import {
-  db,
-  getWordsByDecks,
-  renameDeck,
-  deleteDeck
-} from '../db/dexie'
-import type { Word, VocabLevel, WordStatus } from '../db/types'
-import { BUILTIN_DECKS, BUILTIN_LEVELS } from '../db/types'
-import { speak, isSpeechSupported } from '../utils/speak'
+import { getWordsByDecks, renameDeck, deleteDeck } from '../db/dexie'
+import type { Word, WordStatus } from '../db/types'
+import { isSpeechSupported } from '../utils/speak'
+import { useDecks } from '../hooks/useDecks'
+import { DeckPills } from './DeckPills'
+import { WordRow } from './WordRow'
+import { EmptyState, LoadingState } from './common/States'
 
-type DeckOption = { id: number; name: string; level?: VocabLevel }
 type StatusFilter = 'all' | WordStatus
-
-const STATUS_LABEL: Record<WordStatus, string> = {
-  active: '待背',
-  struck: '待检测',
-  mastered: '已掌握'
-}
-const STATUS_COLOR: Record<WordStatus, string> = {
-  active: 'indigo',
-  struck: 'yellow',
-  mastered: 'teal'
-}
 
 const VISIBLE_LIMIT = 300
 
 export default function BrowseView() {
-  const [allDecks, setAllDecks] = useState<DeckOption[]>([])
+  const { decks, loading: decksLoading, reload, resolveCumulativeIds } = useDecks()
   const [selectedId, setSelectedId] = useState<number | undefined>(undefined)
   const [words, setWords] = useState<Word[]>([])
   const [loading, setLoading] = useState(true)
@@ -66,50 +40,28 @@ export default function BrowseView() {
 
   const speakable = isSpeechSupported()
 
-  // 载入 deck 列表
+  // 选中项默认取第一个 deck
   useEffect(() => {
-    ;(async () => {
-      const all = await db.decks.toArray()
-      const builtin = BUILTIN_LEVELS.map((lv) => {
-        const d = all.find((x) => x.name === BUILTIN_DECKS[lv])
-        return d ? { id: d.id, name: d.name, level: lv } : null
-      }).filter(Boolean) as DeckOption[]
-      const builtinIds = new Set(builtin.map((d) => d.id))
-      const user = all
-        .filter((d) => !builtinIds.has(d.id))
-        .map((d) => ({ id: d.id, name: d.name }))
-      const opts = [...builtin, ...user]
-      setAllDecks(opts)
-      setSelectedId(opts[0]?.id)
-    })()
-  }, [])
+    if (selectedId === undefined && decks.length > 0) setSelectedId(decks[0].id)
+  }, [decks, selectedId])
 
   // 载入选中 deck 的词（内置 → 累进聚合）
   useEffect(() => {
+    if (decksLoading) return
+    if (selectedId === undefined) {
+      setWords([])
+      setLoading(false)
+      return
+    }
     ;(async () => {
-      if (selectedId === undefined) {
-        setWords([])
-        setLoading(false)
-        return
-      }
       setLoading(true)
-      const sel = allDecks.find((d) => d.id === selectedId)
-      let ids: number[]
-      if (sel?.level) {
-        const idx = BUILTIN_LEVELS.indexOf(sel.level)
-        ids = allDecks
-          .filter((d) => d.level && BUILTIN_LEVELS.indexOf(d.level) <= idx)
-          .map((d) => d.id)
-      } else {
-        ids = [selectedId]
-      }
-      setWords(await getWordsByDecks(ids))
+      setWords(await getWordsByDecks(resolveCumulativeIds(selectedId)))
       setLoading(false)
       setRenaming(false)
     })()
-  }, [selectedId, allDecks])
+  }, [selectedId, decksLoading, resolveCumulativeIds])
 
-  const selectedDeck = allDecks.find((d) => d.id === selectedId)
+  const selectedDeck = decks.find((d) => d.id === selectedId)
 
   const counts = useMemo(() => {
     let a = 0,
@@ -147,9 +99,7 @@ export default function BrowseView() {
   const doRename = async (): Promise<void> => {
     if (selectedId === undefined || !renameVal.trim()) return
     await renameDeck(selectedId, renameVal.trim())
-    setAllDecks((prev) =>
-      prev.map((d) => (d.id === selectedId ? { ...d, name: renameVal.trim() } : d))
-    )
+    await reload()
     setRenaming(false)
     notifications.show({ title: '已重命名', message: renameVal.trim(), color: 'blue' })
   }
@@ -159,37 +109,15 @@ export default function BrowseView() {
     if (!window.confirm(`确定删除词库「${selectedDeck.name}」及其所有单词？此操作不可撤销。`))
       return
     await deleteDeck(selectedId)
-    const rest = allDecks.filter((d) => d.id !== selectedId)
-    setAllDecks(rest)
-    setSelectedId(rest[0]?.id)
+    setSelectedId(undefined)
+    await reload()
     notifications.show({ title: '已删除', message: selectedDeck.name, color: 'red' })
   }
 
   return (
     <Stack gap="sm">
       {/* deck 选择 */}
-      <Group justify="center" gap={6} wrap="wrap">
-        {allDecks.map((d) => {
-          const active = selectedId === d.id
-          return (
-            <Button
-              key={d.id}
-              size="xs"
-              radius="xl"
-              variant={active ? 'gradient' : 'default'}
-              gradient={
-                active ? { from: 'indigo', to: 'violet', deg: 135 } : undefined
-              }
-              leftSection={
-                d.level ? <IconBooks size={14} stroke={1.7} /> : <IconFolder size={14} stroke={1.7} />
-              }
-              onClick={() => setSelectedId(d.id)}
-            >
-              {d.name}
-            </Button>
-          )
-        })}
-      </Group>
+      <DeckPills decks={decks} selectedId={selectedId} onSelect={setSelectedId} />
 
       {/* deck 管理（仅用户自建 deck 可改名/删除） */}
       {selectedDeck && !selectedDeck.level && (
@@ -295,55 +223,14 @@ export default function BrowseView() {
 
       {/* 列表 */}
       {loading ? (
-        <Center py={60}>
-          <Loader color="indigo" type="dots" />
-        </Center>
+        <LoadingState py={60} />
       ) : shown.length === 0 ? (
-        <Center py={60}>
-          <Text c="dimmed">没有符合条件的单词。</Text>
-        </Center>
+        <EmptyState icon={IconSearch} label="没有符合条件的单词。" py={60} />
       ) : (
         <Stack gap={4}>
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing={4} verticalSpacing={4}>
             {shown.map((w) => (
-            <Paper key={w.id} withBorder p="xs" radius="md">
-              <Group justify="space-between" wrap="nowrap" gap="sm">
-                <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
-                  <Badge
-                    circle
-                    size="xs"
-                    variant="filled"
-                    color={STATUS_COLOR[w.status]}
-                    title={STATUS_LABEL[w.status]}
-                  />
-                  <Text fw={600} size="sm">
-                    {w.text}
-                  </Text>
-                  {w.collins ? (
-                    <Text size="xs" c="yellow.7" style={{ flexShrink: 0 }}>
-                      {'★'.repeat(w.collins)}
-                    </Text>
-                  ) : null}
-                </Group>
-                <Group gap={4} wrap="nowrap" style={{ minWidth: 0, flexShrink: 1 }}>
-                  <Text size="sm" c="dimmed" ta="right" truncate>
-                    {w.meaning}
-                  </Text>
-                  {speakable && (
-                    <ActionIcon
-                      variant="subtle"
-                      color="gray"
-                      size="sm"
-                      radius="xl"
-                      aria-label="朗读"
-                      onClick={() => speak(w.text)}
-                    >
-                      <IconVolume size={18} stroke={1.7} />
-                    </ActionIcon>
-                  )}
-                </Group>
-              </Group>
-            </Paper>
+              <WordRow key={w.id} word={w} speakable={speakable} />
             ))}
           </SimpleGrid>
           {filtered.length > VISIBLE_LIMIT && (

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Stack,
@@ -6,20 +6,13 @@ import {
   Text,
   Group,
   Button,
-  Paper,
   Progress,
   SegmentedControl,
-  Transition,
-  Box,
-  Center,
-  Loader,
-  ActionIcon
+  Box
 } from '@mantine/core'
+import { useHotkeys } from '@mantine/hooks'
 import {
-  IconBooks,
-  IconFolder,
   IconRefresh,
-  IconVolume,
   IconArrowLeft,
   IconArrowRight,
   IconChecklist,
@@ -33,11 +26,14 @@ import {
   getSettings,
   logEvent
 } from '../db/dexie'
-import type { Word, VocabLevel } from '../db/types'
-import { BUILTIN_DECKS, BUILTIN_LEVELS } from '../db/types'
-import { speak, isSpeechSupported } from '../utils/speak'
+import type { Word } from '../db/types'
+import { isSpeechSupported } from '../utils/speak'
 import { notifications } from '@mantine/notifications'
-import { primaryMeaning } from '../utils/meaning'
+import { useDecks } from '../hooks/useDecks'
+import { DeckPills } from './DeckPills'
+import { WordCard } from './WordCard'
+import { BRAND_GRADIENT } from '../theme'
+import { LoadingState } from './common/States'
 
 function chunkWords(words: Word[], batchSize: number): Word[][] {
   const chunks: Word[][] = []
@@ -49,77 +45,31 @@ function chunkWords(words: Word[], batchSize: number): Word[][] {
 
 export default function StudyView() {
   const nav = useNavigate()
+  const { decks, loading: decksLoading, resolveCumulativeIds } = useDecks()
   const [tables, setTables] = useState<Word[][]>([])
   const [tableIndex, setTableIndex] = useState(0)
   const [exitingIds, setExitingIds] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(true)
   const [mode, setMode] = useState<'study' | 'screen'>('study')
 
-  // —— 内置 deck 切换 ——
-  const [allDecks, setAllDecks] = useState<
-    { id: number; name: string; level?: VocabLevel }[]
-  >([])
-  const [selectedDeckId, setSelectedDeckId] = useState<number | undefined>(
-    undefined
-  )
+  const [selectedDeckId, setSelectedDeckId] = useState<number | undefined>(undefined)
+  const [initialized, setInitialized] = useState(false)
   const [deckNames, setDeckNames] = useState<string>('')
 
-  // 加载内置 deck 列表
+  // deck 列表就绪后，按 settings.startingDeck 选初始项（无则取第一个）
   useEffect(() => {
+    if (decksLoading || initialized) return
     ;(async () => {
       const settings = await getSettings()
-      let initDeckId: number | undefined
-
+      let initId: number | undefined
       if (settings.startingDeck) {
-        const level = settings.startingDeck
-        const deck = await db.decks
-          .where('name')
-          .equals(BUILTIN_DECKS[level])
-          .first()
-        if (deck) initDeckId = deck.id
+        initId = decks.find((d) => d.level === settings.startingDeck)?.id
       }
-
-      const builtinDeckIds: number[] = []
-      for (const level of BUILTIN_LEVELS) {
-        const deck = await db.decks
-          .where('name')
-          .equals(BUILTIN_DECKS[level])
-          .first()
-        if (deck) builtinDeckIds.push(deck.id)
-      }
-
-      const all = await db.decks.toArray()
-      const userDecks = all
-        .filter((d) => !builtinDeckIds.includes(d.id))
-        .map((d) => ({ id: d.id, name: d.name }))
-
-      const allDeckOptions: {
-        id: number
-        name: string
-        level?: VocabLevel
-      }[] = [
-        ...(BUILTIN_LEVELS
-          .map((lv) => {
-            const d = all.find((d) => d.name === BUILTIN_DECKS[lv])
-            return d
-              ? { id: d.id, name: d.name, level: lv }
-              : null
-          })
-          .filter(Boolean) as { id: number; name: string; level: VocabLevel }[]),
-        ...userDecks
-      ]
-
-      setAllDecks(allDeckOptions)
-
-      if (initDeckId && allDeckOptions.some((d) => d.id === initDeckId)) {
-        setSelectedDeckId(initDeckId)
-      } else if (allDeckOptions.length > 0) {
-        setSelectedDeckId(allDeckOptions[0].id)
-      } else {
-        setSelectedDeckId(undefined)
-      }
+      if (initId === undefined && decks.length > 0) initId = decks[0].id
+      setSelectedDeckId(initId)
+      setInitialized(true)
     })()
-  }, [])
+  }, [decksLoading, decks, initialized])
 
   /**
    * 取当前选择对应的 active 词。
@@ -128,16 +78,10 @@ export default function StudyView() {
    */
   const fetchActives = useCallback(async (): Promise<Word[]> => {
     if (selectedDeckId === undefined) return getActiveWords()
-    const sel = allDecks.find((d) => d.id === selectedDeckId)
-    if (sel?.level) {
-      const selIdx = BUILTIN_LEVELS.indexOf(sel.level)
-      const cumulativeIds = allDecks
-        .filter((d) => d.level && BUILTIN_LEVELS.indexOf(d.level) <= selIdx)
-        .map((d) => d.id)
-      return getActiveWordsByDecks(cumulativeIds)
-    }
+    const sel = decks.find((d) => d.id === selectedDeckId)
+    if (sel?.level) return getActiveWordsByDecks(resolveCumulativeIds(selectedDeckId))
     return getActiveWords(selectedDeckId)
-  }, [selectedDeckId, allDecks])
+  }, [selectedDeckId, decks, resolveCumulativeIds])
 
   const reassemble = useCallback(async () => {
     const settings = await getSettings()
@@ -147,14 +91,14 @@ export default function StudyView() {
     setTableIndex((prev) => Math.min(prev, Math.max(0, ch.length - 1)))
     setExitingIds(new Set())
 
-    const deck = allDecks.find((d) => d.id === selectedDeckId)
+    const deck = decks.find((d) => d.id === selectedDeckId)
     setDeckNames(deck ? deck.name : '全部')
-  }, [fetchActives, selectedDeckId, allDecks])
+  }, [fetchActives, selectedDeckId, decks])
 
   useEffect(() => {
-    if (allDecks.length === 0 && loading) return
+    if (!initialized) return
     reassemble().then(() => setLoading(false))
-  }, [reassemble, allDecks])
+  }, [reassemble, initialized])
 
   const handleDeckChange = (deckId: number) => {
     setSelectedDeckId(deckId)
@@ -266,12 +210,20 @@ export default function StudyView() {
     })
   }
 
+  // 稳定的划词回调：让 WordCard 的 memo 生效（划单张只重渲染受影响的卡）
+  const strikeRef = useRef(strikeWord)
+  strikeRef.current = strikeWord
+  const onStrike = useCallback((w: Word) => strikeRef.current(w), [])
+
+  // 键盘快捷键：← / → 翻表，r 重组剩余
+  useHotkeys([
+    ['ArrowLeft', () => setTableIndex((i) => Math.max(0, i - 1))],
+    ['ArrowRight', () => setTableIndex((i) => Math.min(tables.length - 1, i + 1))],
+    ['r', () => reassemble()]
+  ])
+
   if (loading) {
-    return (
-      <Center py={80}>
-        <Loader color="indigo" type="dots" />
-      </Center>
-    )
+    return <LoadingState />
   }
 
   const currentTable = tables[tableIndex] ?? []
@@ -281,69 +233,52 @@ export default function StudyView() {
   const tableTotal = currentTable.length
   const pct = tableTotal > 0 ? (struckCount / tableTotal) * 100 : 0
 
-  // Deck selector (reusable)
-  const renderDeckSelector = () => {
-    if (allDecks.length <= 1) return null
-    return (
-      <Group justify="center" gap={6} wrap="wrap">
-        {allDecks.map((d) => {
-          const active = selectedDeckId === d.id
-          return (
-            <Button
-              key={d.id}
-              size="xs"
-              radius="xl"
-              variant={active ? 'gradient' : 'default'}
-              gradient={
-                active ? { from: 'indigo', to: 'violet', deg: 135 } : undefined
-              }
-              leftSection={
-                d.level ? <IconBooks size={14} stroke={1.7} /> : <IconFolder size={14} stroke={1.7} />
-              }
-              onClick={() => handleDeckChange(d.id)}
-            >
-              {d.name}
-            </Button>
-          )
-        })}
-      </Group>
-    )
-  }
-
   if (!allWords.length) {
     return (
-      <Stack align="center" py={60} gap="md">
-        {renderDeckSelector()}
-        <IconConfetti size={48} stroke={1.5} color="var(--mantine-color-indigo-5)" />
-        <Text c="dimmed" ta="center">
-          {selectedDeckId !== undefined
-            ? '选中的词库没有待背的词了。'
-            : '还没有待背的词。'}
-        </Text>
-        <Group>
-          <Button
-            variant="gradient"
-            gradient={{ from: 'indigo', to: 'violet', deg: 135 }}
-            onClick={() => nav('/import')}
-          >
-            导入单词
-          </Button>
-          <Button
-            variant="subtle"
-            color="gray"
-            leftSection={<IconRefresh size={16} stroke={1.7} />}
-            onClick={reassemble}
-          >
-            重组
-          </Button>
-        </Group>
+      <Stack gap="md">
+        <DeckPills
+          decks={decks}
+          selectedId={selectedDeckId}
+          onSelect={handleDeckChange}
+          hideWhenSingle
+        />
+        <Stack align="center" py={60} gap="md">
+          <IconConfetti size={48} stroke={1.5} color="var(--mantine-color-indigo-5)" />
+          <Text c="dimmed" ta="center">
+            {selectedDeckId !== undefined
+              ? '选中的词库没有待背的词了。'
+              : '还没有待背的词。'}
+          </Text>
+          <Group>
+            <Button
+              variant="gradient"
+              gradient={BRAND_GRADIENT}
+              onClick={() => nav('/import')}
+            >
+              导入单词
+            </Button>
+            <Button
+              variant="subtle"
+              color="gray"
+              leftSection={<IconRefresh size={16} stroke={1.7} />}
+              onClick={reassemble}
+            >
+              重组
+            </Button>
+          </Group>
+        </Stack>
       </Stack>
     )
   }
 
   return (
     <Stack gap="md">
-      {renderDeckSelector()}
+      <DeckPills
+        decks={decks}
+        selectedId={selectedDeckId}
+        onSelect={handleDeckChange}
+        hideWhenSingle
+      />
 
       {/* 筛选 / 背诵 模式切换 */}
       <Stack gap={4} align="center">
@@ -400,71 +335,15 @@ export default function StudyView() {
 
       {/* Word cards */}
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={8} verticalSpacing={8}>
-        {currentTable.map((word) => {
-          const exiting = exitingIds.has(word.id)
-          return (
-            <Transition
-              key={word.id}
-              mounted={!exiting}
-              transition="slide-left"
-              duration={250}
-            >
-              {(styles) => (
-                <Paper
-                  withBorder
-                  p="sm"
-                  className="grind-word-card"
-                  style={{
-                    ...styles,
-                    textDecoration: exiting ? 'line-through' : 'none',
-                    opacity: exiting ? 0.55 : 1,
-                    background: exiting
-                      ? 'var(--mantine-color-teal-light)'
-                      : undefined
-                  }}
-                  onClick={() => strikeWord(word)}
-                >
-                  <Group justify="space-between" wrap="nowrap" gap="sm">
-                    <Group gap="sm" wrap="nowrap" style={{ flexShrink: 0 }}>
-                      <span className="grind-check" data-done={exiting}>
-                        <IconCheck size={14} stroke={3} />
-                      </span>
-                      <Text fw={600}>
-                        {word.text}
-                      </Text>
-                    </Group>
-                    <Group
-                      gap={4}
-                      wrap="nowrap"
-                      style={{ flexShrink: 1, minWidth: 0 }}
-                    >
-                      {word.meaning && (
-                        <Text size="sm" c="dimmed" ta="right" truncate>
-                          {primaryMeaning(word.meaning)}
-                        </Text>
-                      )}
-                      {speakable && (
-                        <ActionIcon
-                          variant="subtle"
-                          color="gray"
-                          size="sm"
-                          radius="xl"
-                          aria-label="朗读"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            speak(word.text)
-                          }}
-                        >
-                          <IconVolume size={18} stroke={1.7} />
-                        </ActionIcon>
-                      )}
-                    </Group>
-                  </Group>
-                </Paper>
-              )}
-            </Transition>
-          )
-        })}
+        {currentTable.map((word) => (
+          <WordCard
+            key={word.id}
+            word={word}
+            exiting={exitingIds.has(word.id)}
+            speakable={speakable}
+            onStrike={onStrike}
+          />
+        ))}
       </SimpleGrid>
 
       {/* Navigation */}
@@ -498,6 +377,12 @@ export default function StudyView() {
           重组剩余
         </Button>
       </Group>
+
+      {tables.length > 1 && (
+        <Text size="xs" c="dimmed" ta="center">
+          快捷键：← / → 翻表 · R 重组
+        </Text>
+      )}
 
       {/* Review entry */}
       <Box

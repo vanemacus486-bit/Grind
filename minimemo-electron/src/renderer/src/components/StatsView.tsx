@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ComponentType } from 'react'
 import {
   Stack,
@@ -7,12 +7,11 @@ import {
   Paper,
   Group,
   Tooltip,
-  Center,
-  Loader,
   RingProgress,
   Progress,
   type MantineColor
 } from '@mantine/core'
+import { LoadingState } from './common/States'
 import {
   IconFlame,
   IconCalendarStats,
@@ -52,6 +51,13 @@ interface Stats {
 }
 
 const BUILTIN_ORDER = ['高考', '四级', '六级', '雅思']
+
+const DECK_COLOR: Record<string, string> = {
+  高考: 'teal',
+  四级: 'blue',
+  六级: 'indigo',
+  雅思: 'grape'
+}
 
 function buildStats(words: Word[], events: AppEvent[], decks: Deck[]): Stats {
   const now = new Date()
@@ -94,23 +100,32 @@ function buildStats(words: Word[], events: AppEvent[], decks: Deck[]): Stats {
   for (const e of events) hourHistogram[e.ts.getHours()]++
 
   const deckName = new Map(decks.map((dk) => [dk.id, dk.name]))
-  const agg = new Map<number, DeckProgress>()
+  // 各 deck 原始计数
+  const raw = new Map<string, { total: number; mastered: number }>()
   for (const w of words) {
-    let a = agg.get(w.deckId)
-    if (!a) {
-      a = { name: deckName.get(w.deckId) ?? '其它', total: 0, mastered: 0 }
-      agg.set(w.deckId, a)
-    }
-    a.total++
-    if (w.status === 'mastered') a.mastered++
+    const name = deckName.get(w.deckId) ?? '其它'
+    const r = raw.get(name) ?? { total: 0, mastered: 0 }
+    r.total++
+    if (w.status === 'mastered') r.mastered++
+    raw.set(name, r)
   }
-  const deckProgress = Array.from(agg.values()).sort((a, b) => {
-    const ia = BUILTIN_ORDER.indexOf(a.name)
-    const ib = BUILTIN_ORDER.indexOf(b.name)
-    return (
-      (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.name.localeCompare(b.name)
-    )
-  })
+  // 内置分级：累计口径（含更低级词），与「选雅思 = 学全部 ≤ 雅思」的背诵模型一致
+  const deckProgress: DeckProgress[] = []
+  let cumTotal = 0
+  let cumMastered = 0
+  for (const name of BUILTIN_ORDER) {
+    const r = raw.get(name)
+    if (!r) continue
+    cumTotal += r.total
+    cumMastered += r.mastered
+    deckProgress.push({ name, total: cumTotal, mastered: cumMastered })
+  }
+  // 用户自建 deck：独立统计
+  for (const [name, r] of raw) {
+    if (!BUILTIN_ORDER.includes(name)) {
+      deckProgress.push({ name, total: r.total, mastered: r.mastered })
+    }
+  }
 
   return {
     totalWords,
@@ -199,7 +214,11 @@ function StatTile({
 }
 
 export default function StatsView() {
-  const [stats, setStats] = useState<Stats | null>(null)
+  const [data, setData] = useState<{
+    words: Word[]
+    events: AppEvent[]
+    decks: Deck[]
+  } | null>(null)
 
   useEffect(() => {
     ;(async () => {
@@ -208,16 +227,18 @@ export default function StatsView() {
         db.events.toArray(),
         db.decks.toArray()
       ])
-      setStats(buildStats(words, events, decks))
+      setData({ words, events, decks })
     })()
   }, [])
 
+  // 纯计算，仅在原始数据变化时重算（7000+ 词的多次遍历不必每次渲染都跑）
+  const stats = useMemo(
+    () => (data ? buildStats(data.words, data.events, data.decks) : null),
+    [data]
+  )
+
   if (!stats) {
-    return (
-      <Center py={80}>
-        <Loader color="indigo" type="dots" />
-      </Center>
-    )
+    return <LoadingState />
   }
 
   const masteredPct =
@@ -320,11 +341,19 @@ export default function StatsView() {
                         {d.mastered} / {d.total} · {pct}%
                       </Text>
                     </Group>
-                    <Progress value={pct} color="indigo" radius="xl" size="sm" />
+                    <Progress
+                      value={pct}
+                      color={DECK_COLOR[d.name] ?? 'gray'}
+                      radius="xl"
+                      size="sm"
+                    />
                   </div>
                 )
               })}
           </Stack>
+          <Text size="xs" c="dimmed" mt="xs">
+            各等级为累计口径：含更低级词汇（如「雅思」= 高考+四级+六级+雅思）
+          </Text>
         </Paper>
 
         <Paper withBorder p="md">
