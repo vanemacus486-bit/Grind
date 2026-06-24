@@ -9,6 +9,8 @@ interface WordCardProps {
   word: Word
   exiting: boolean
   speakable: boolean
+  /** 背诵区：释义默认隐藏，hover/聚焦才显，逼真回忆 */
+  peek?: boolean
   onStrike: (word: Word) => void
 }
 
@@ -16,7 +18,7 @@ interface WordCardProps {
  * 背词卡：点一下 / 回车 / 空格 = 划掉（送检测或标记掌握）。
  * memo 化 + 稳定 onStrike，让划单张时只重渲染受影响的卡。
  */
-function WordCardBase({ word, exiting, speakable, onStrike }: WordCardProps) {
+function WordCardBase({ word, exiting, speakable, peek, onStrike }: WordCardProps) {
   return (
     <Transition mounted={!exiting} transition="slide-left" duration={250}>
       {(styles) => (
@@ -50,7 +52,13 @@ function WordCardBase({ word, exiting, speakable, onStrike }: WordCardProps) {
             </Group>
             <Group gap={4} wrap="nowrap" style={{ flexShrink: 1, minWidth: 0 }}>
               {word.meaning && (
-                <Text size="sm" c="dimmed" ta="right" truncate>
+                <Text
+                  size="sm"
+                  c="dimmed"
+                  ta="right"
+                  truncate
+                  className={peek ? 'grind-meaning-peek' : undefined}
+                >
                   {primaryMeaning(word.meaning)}
                 </Text>
               )}

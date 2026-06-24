@@ -102,6 +102,17 @@ body {
   box-shadow: 0 0 0 2px var(--mantine-color-indigo-2), var(--mantine-shadow-sm);
 }
 
+/* 背诵区：释义默认隐藏，hover / 聚焦才「偷看」，逼真回忆 */
+.grind-meaning-peek {
+  opacity: 0;
+  transition: opacity 130ms ease;
+}
+
+.grind-word-card:hover .grind-meaning-peek,
+.grind-word-card:focus-within .grind-meaning-peek {
+  opacity: 1;
+}
+
 [data-mantine-color-scheme='dark'] .grind-word-card:focus-visible {
   box-shadow: 0 0 0 2px var(--mantine-color-indigo-7), var(--mantine-shadow-sm);
 }

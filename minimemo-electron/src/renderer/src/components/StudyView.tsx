@@ -8,7 +8,8 @@ import {
   Button,
   Progress,
   SegmentedControl,
-  Box
+  Tooltip,
+  ActionIcon
 } from '@mantine/core'
 import { useHotkeys } from '@mantine/hooks'
 import {
@@ -17,7 +18,8 @@ import {
   IconArrowRight,
   IconChecklist,
   IconConfetti,
-  IconCheck
+  IconCheck,
+  IconHelp
 } from '@tabler/icons-react'
 import {
   db,
@@ -30,7 +32,7 @@ import type { Word } from '../db/types'
 import { isSpeechSupported } from '../utils/speak'
 import { notifications } from '@mantine/notifications'
 import { useDecks } from '../hooks/useDecks'
-import { DeckPills } from './DeckPills'
+import { DeckMenu } from './DeckMenu'
 import { WordCard } from './WordCard'
 import { BRAND_GRADIENT } from '../theme'
 import { LoadingState } from './common/States'
@@ -54,7 +56,7 @@ export default function StudyView() {
 
   const [selectedDeckId, setSelectedDeckId] = useState<number | undefined>(undefined)
   const [initialized, setInitialized] = useState(false)
-  const [deckNames, setDeckNames] = useState<string>('')
+  const [deckStats, setDeckStats] = useState<{ total: number; mastered: number } | null>(null)
 
   // deck 列表就绪后，按 settings.startingDeck 选初始项（无则取第一个）
   useEffect(() => {
@@ -83,6 +85,25 @@ export default function StudyView() {
     return getActiveWords(selectedDeckId)
   }, [selectedDeckId, decks, resolveCumulativeIds])
 
+  // 当前词库的掌握度（total / mastered）——用索引计数，便宜；deck 变化或重组时刷新
+  const refreshDeckStats = useCallback(async () => {
+    const ids = selectedDeckId === undefined ? undefined : resolveCumulativeIds(selectedDeckId)
+    let total: number
+    let mastered: number
+    if (ids === undefined) {
+      total = await db.words.count()
+      mastered = await db.words.where('status').equals('mastered').count()
+    } else {
+      total = await db.words.where('deckId').anyOf(ids).count()
+      mastered = await db.words
+        .where('deckId')
+        .anyOf(ids)
+        .and((w) => w.status === 'mastered')
+        .count()
+    }
+    setDeckStats({ total, mastered })
+  }, [selectedDeckId, resolveCumulativeIds])
+
   const reassemble = useCallback(async () => {
     const settings = await getSettings()
     const actives = await fetchActives()
@@ -90,10 +111,8 @@ export default function StudyView() {
     setTables(ch)
     setTableIndex((prev) => Math.min(prev, Math.max(0, ch.length - 1)))
     setExitingIds(new Set())
-
-    const deck = decks.find((d) => d.id === selectedDeckId)
-    setDeckNames(deck ? deck.name : '全部')
-  }, [fetchActives, selectedDeckId, decks])
+    refreshDeckStats()
+  }, [fetchActives, refreshDeckStats])
 
   useEffect(() => {
     if (!initialized) return
@@ -229,19 +248,14 @@ export default function StudyView() {
   const currentTable = tables[tableIndex] ?? []
   const allWords = tables.flat()
   const speakable = isSpeechSupported()
-  const struckCount = exitingIds.size
-  const tableTotal = currentTable.length
-  const pct = tableTotal > 0 ? (struckCount / tableTotal) * 100 : 0
+  const remaining = allWords.length
+  const masteryPct =
+    deckStats && deckStats.total > 0 ? (deckStats.mastered / deckStats.total) * 100 : 0
 
   if (!allWords.length) {
     return (
       <Stack gap="md">
-        <DeckPills
-          decks={decks}
-          selectedId={selectedDeckId}
-          onSelect={handleDeckChange}
-          hideWhenSingle
-        />
+        <DeckMenu decks={decks} selectedId={selectedDeckId} onSelect={handleDeckChange} />
         <Stack align="center" py={60} gap="md">
           <IconConfetti size={48} stroke={1.5} color="var(--mantine-color-indigo-5)" />
           <Text c="dimmed" ta="center">
@@ -273,52 +287,60 @@ export default function StudyView() {
 
   return (
     <Stack gap="md">
-      <DeckPills
-        decks={decks}
-        selectedId={selectedDeckId}
-        onSelect={handleDeckChange}
-        hideWhenSingle
-      />
+      {/* 顶栏：词库下拉 + 模式切换 + 说明（一行收纳，省出注意力给单词）*/}
+      <Group justify="space-between" wrap="nowrap" gap="sm">
+        <DeckMenu decks={decks} selectedId={selectedDeckId} onSelect={handleDeckChange} />
+        <Group gap="xs" wrap="nowrap">
+          <SegmentedControl
+            size="xs"
+            radius="xl"
+            value={mode}
+            onChange={(v) => setMode(v as 'study' | 'screen')}
+            data={[
+              { value: 'screen', label: '筛选区' },
+              { value: 'study', label: '背诵区' }
+            ]}
+          />
+          <Tooltip
+            multiline
+            w={260}
+            withArrow
+            position="bottom-end"
+            label={
+              <Stack gap={2}>
+                <Text size="xs">筛选区：点一下 = 已经会了，移出学习（可撤销）</Text>
+                <Text size="xs">背诵区：点一下 = 记住了，送去检测区（释义 hover 才显）</Text>
+                <Text size="xs">快捷键：← / → 翻表 · R 重组 · 回车/空格 划词</Text>
+              </Stack>
+            }
+          >
+            <ActionIcon variant="subtle" color="gray" radius="xl" aria-label="说明">
+              <IconHelp size={18} stroke={1.7} />
+            </ActionIcon>
+          </Tooltip>
+        </Group>
+      </Group>
 
-      {/* 筛选 / 背诵 模式切换 */}
-      <Stack gap={4} align="center">
-        <SegmentedControl
-          size="sm"
-          radius="xl"
-          value={mode}
-          onChange={(v) => setMode(v as 'study' | 'screen')}
-          data={[
-            { value: 'screen', label: '筛选区' },
-            { value: 'study', label: '背诵区' }
-          ]}
-        />
-        <Text size="xs" c="dimmed" ta="center">
-          {mode === 'screen'
-            ? '筛选区：点一下 = 已经会了，移出学习（可撤销）'
-            : '背诵区：点一下 = 记住了，送去检测区'}
-        </Text>
-      </Stack>
-
-      {/* Table indicator + progress */}
+      {/* 进度：剩余词数（随划词递减）+ 本词库掌握度 */}
       <Stack gap={6}>
         <Group justify="space-between" align="flex-end">
           <Text size="sm" c="dimmed">
-            {deckNames && `${deckNames} · `}第 {tableIndex + 1}/{tables.length} 表
-            · 共 {allWords.length} 词
+            第 {tableIndex + 1}/{tables.length} 表
           </Text>
           <Text size="sm" fw={600} c="indigo">
-            {struckCount}/{tableTotal} {mode === 'screen' ? '已掌握' : '已划'}
+            剩 {remaining} 词
           </Text>
         </Group>
-
-        <Progress
-          value={pct}
-          size="md"
-          radius="xl"
-          color="indigo"
-          striped={pct > 0}
-          animated={pct > 0 && pct < 100}
-        />
+        <Tooltip
+          withArrow
+          label={
+            deckStats
+              ? `已掌握 ${deckStats.mastered}/${deckStats.total}（${masteryPct.toFixed(1)}%）`
+              : '已掌握 —'
+          }
+        >
+          <Progress value={masteryPct} size="sm" radius="xl" color="teal" />
+        </Tooltip>
       </Stack>
 
       {mode === 'screen' && currentTable.length > 0 && (
@@ -333,7 +355,7 @@ export default function StudyView() {
         </Button>
       )}
 
-      {/* Word cards */}
+      {/* 单词卡（主角）。背诵区释义默认隐藏，hover/聚焦才显 */}
       <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={8} verticalSpacing={8}>
         {currentTable.map((word) => (
           <WordCard
@@ -341,66 +363,59 @@ export default function StudyView() {
             word={word}
             exiting={exitingIds.has(word.id)}
             speakable={speakable}
+            peek={mode === 'study'}
             onStrike={onStrike}
           />
         ))}
       </SimpleGrid>
 
-      {/* Navigation */}
-      <Group justify="center" gap="xs">
-        {tableIndex > 0 && (
-          <Button
-            variant="subtle"
-            color="gray"
-            leftSection={<IconArrowLeft size={16} stroke={1.7} />}
-            onClick={() => setTableIndex((i) => i - 1)}
-          >
-            上一表
-          </Button>
-        )}
-        {tableIndex < tables.length - 1 && (
-          <Button
-            variant="subtle"
-            color="gray"
-            rightSection={<IconArrowRight size={16} stroke={1.7} />}
-            onClick={() => setTableIndex((i) => i + 1)}
-          >
-            下一表
-          </Button>
-        )}
+      {/* 一行底栏：翻页 · 重组 · 检测区 */}
+      <Group justify="center" gap="xs" wrap="wrap">
         <Button
+          size="compact-sm"
+          variant="subtle"
+          color="gray"
+          disabled={tableIndex === 0}
+          leftSection={<IconArrowLeft size={16} stroke={1.7} />}
+          onClick={() => setTableIndex((i) => Math.max(0, i - 1))}
+        >
+          上一表
+        </Button>
+        <Text size="sm" c="dimmed">
+          {tableIndex + 1}/{tables.length}
+        </Text>
+        <Button
+          size="compact-sm"
+          variant="subtle"
+          color="gray"
+          disabled={tableIndex >= tables.length - 1}
+          rightSection={<IconArrowRight size={16} stroke={1.7} />}
+          onClick={() => setTableIndex((i) => Math.min(tables.length - 1, i + 1))}
+        >
+          下一表
+        </Button>
+        <Text size="sm" c="dimmed">
+          ·
+        </Text>
+        <Button
+          size="compact-sm"
           variant="subtle"
           color="gray"
           leftSection={<IconRefresh size={16} stroke={1.7} />}
           onClick={reassemble}
         >
-          重组剩余
+          重组
+        </Button>
+        <Button
+          size="compact-sm"
+          variant="subtle"
+          color="indigo"
+          leftSection={<IconChecklist size={16} stroke={1.7} />}
+          onClick={() => nav('/review')}
+        >
+          检测区
         </Button>
       </Group>
-
-      {tables.length > 1 && (
-        <Text size="xs" c="dimmed" ta="center">
-          快捷键：← / → 翻表 · R 重组
-        </Text>
-      )}
-
-      {/* Review entry */}
-      <Box
-        pt="md"
-        style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}
-      >
-        <Group justify="center">
-          <Button
-            variant="light"
-            color="indigo"
-            radius="xl"
-            leftSection={<IconChecklist size={18} stroke={1.7} />}
-            onClick={() => nav('/review')}
-          >
-            检测区
-          </Button>
-        </Group>
-      </Box>
     </Stack>
   )
 }
